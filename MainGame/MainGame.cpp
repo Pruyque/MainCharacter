@@ -59,6 +59,11 @@ struct entity
 
 std::vector<entity> entity_map;
 
+unsigned int hash(unsigned int x, unsigned int seed); // 24 bits
+unsigned int hash2(unsigned int x, unsigned int y, unsigned int seed)
+{
+	return hash(hash(x+y, seed) ^ hash(x, seed), seed<<1);
+}
 void DrawScene(bool high_quality)
 {
 	if (high_quality)
@@ -70,18 +75,19 @@ void DrawScene(bool high_quality)
 		glDisable(GL_TEXTURE_1D);
 	}
 	glScaled(0.1, 0.1, 1);
-
-	for (int x = 0; x < 5; x++)
-		for (int y = 0; y < 5; y++)
+	int seed = Time();
+	for (int x = 0; x < 20; x++)
+		for (int y = 0; y < 20; y++)
 		{
 			glPushName(entity_map.size());
 			entity_map.push_back(entity((x << 16) | y));
 			glPushMatrix();
 			glTranslated(1.5 * x - 1.5 * y, m_1sqrt3 * (x + y), 0);
+			unsigned char q = hash2(x+6, y+6, seed);
 			if (x == sx && y == sy)
 				glColor3d(1, 0, 0);
 			else
-				glColor3d(1, 1, 1);
+				glColor3d((q&1)+0.5, ((q>>1)&1)+0.5, ((q>>2)&1)+0.5);
 			glBegin(GL_TRIANGLE_FAN);
 			glTexCoord1d(0);
 			glVertex2d(0, 0);
@@ -95,10 +101,10 @@ void DrawScene(bool high_quality)
 
 }
 
-unsigned int hash(unsigned int x)
+unsigned int hash(unsigned int x, unsigned int seed) // 24 bits
 {
-	const int fi = 2654435769;
-	return x * fi;
+	const unsigned int fi = 2654435769; // 1/fi * 2^23
+	return (((x * fi * x))>>8)^seed;
 }
 
 int main(void)
@@ -106,11 +112,10 @@ int main(void)
 	int histo[14] = { 0 };
 	int follow[14][14] = { 0 };
 	int last = 0;
-	for (int cy = 0; cy < 1000; cy ++)
-		for (unsigned int cx = 0; cx < 1000; cx++)
+	for (int cy = 0; cy < 5000; cy ++)
+		for (unsigned int cx = 0; cx < 5000; cx++)
 		{
-			int v = (14 * (hash(hash(cx) + hash(cy)) & 0xFFFF)) >> 16;
-			printf("%i %u -> %u\r", cy, cx, v);
+			int v = (14 * (hash(hash(cx, 12) ^ hash(cy,12), 12))) >> 24;
 			histo[v]++;
 			follow[last][v]++;
 			last = v;
@@ -136,7 +141,7 @@ int main(void)
 		printf("%ix%i@%iHz %s // %hi\n", dev_mode.dmPelsWidth, dev_mode.dmPelsHeight, dev_mode.dmDisplayFrequency, fixed[dev_mode.dmDisplayFixedOutput], dev_mode.dmYResolution);
 		if (dev_mode.dmPelsWidth == 1024 && dev_mode.dmPelsHeight == 768)
 		{
-//			ChangeDisplaySettings(&dev_mode, CDS_FULLSCREEN);
+			//ChangeDisplaySettings(&dev_mode, CDS_FULLSCREEN);
 			break;
 		}
 	}
@@ -145,8 +150,12 @@ int main(void)
 	wc.lpszClassName = L"MainCharacter";
 	wc.hCursor = 0;
 	RegisterClass(&wc);
+	
 	HWND wnd = CreateWindow(wc.lpszClassName, L"MainCharacter", 0, 0, 0, dev_mode.dmPelsWidth, dev_mode.dmPelsHeight, 0, 0, 0, 0);
-	SetWindowLong(wnd, GWL_STYLE, WS_VISIBLE);
+	SetWindowLong(wnd, GWL_STYLE, 0);
+	SetWindowPos(wnd, 0, 0, 0, 0, 0, SWP_FRAMECHANGED|SWP_NOMOVE|SWP_NOZORDER|SWP_NOSIZE|SWP_SHOWWINDOW);
+	
+
 	HDC dc = GetDC(wnd);
 	PIXELFORMATDESCRIPTOR pfd;
 	for (int cx = 1; DescribePixelFormat(dc, cx, sizeof(pfd), &pfd); cx++)
