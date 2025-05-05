@@ -112,8 +112,8 @@ int main(void)
 	int histo[14] = { 0 };
 	int follow[14][14] = { 0 };
 	int last = 0;
-	for (int cy = 0; cy < 5000; cy ++)
-		for (unsigned int cx = 0; cx < 5000; cx++)
+	for (int cy = 0; cy < 500; cy ++)
+		for (unsigned int cx = 0; cx < 500; cx++)
 		{
 			int v = (14 * (hash(hash(cx, 12) ^ hash(cy,12), 12))) >> 24;
 			histo[v]++;
