@@ -44,8 +44,87 @@ const double m_1sqrt3 = sqrt(3.)/2.;
 const double hex_x[7] = { 1,0.5,-0.5,-1,-0.5,0.5 ,1};
 const double hex_y[7] = { 0, m_1sqrt3,m_1sqrt3,0,-m_1sqrt3,-m_1sqrt3,0 };
 
+int sx, sy;
+#include <vector>
+struct entity
+{
+	int id;
+	entity(const entity& other) :id(other.id) {}
+	entity(int id) :id(id) {}
+	entity()
+	{
+		id = 0xFFFFFFFF;
+	}
+};
+
+std::vector<entity> entity_map;
+
+void DrawScene(bool high_quality)
+{
+	if (high_quality)
+	{
+		glEnable(GL_TEXTURE_1D);
+	}
+	else
+	{
+		glDisable(GL_TEXTURE_1D);
+	}
+	glScaled(0.1, 0.1, 1);
+
+	for (int x = 0; x < 5; x++)
+		for (int y = 0; y < 5; y++)
+		{
+			glPushName(entity_map.size());
+			entity_map.push_back(entity((x << 16) | y));
+			glPushMatrix();
+			glTranslated(1.5 * x - 1.5 * y, m_1sqrt3 * (x + y), 0);
+			if (x == sx && y == sy)
+				glColor3d(1, 0, 0);
+			else
+				glColor3d(1, 1, 1);
+			glBegin(GL_TRIANGLE_FAN);
+			glTexCoord1d(0);
+			glVertex2d(0, 0);
+			glTexCoord1d(1);
+			for (int cx = 0; cx <= 6; cx++)
+				glVertex2d(hex_x[cx], hex_y[cx]);
+			glEnd();
+			glPopMatrix();
+			glPopName();
+		}
+
+}
+
+unsigned int hash(unsigned int x)
+{
+	const int fi = 2654435769;
+	return x * fi;
+}
+
 int main(void)
 {
+	int histo[14] = { 0 };
+	int follow[14][14] = { 0 };
+	int last = 0;
+	for (int cy = 0; cy < 1000; cy ++)
+		for (unsigned int cx = 0; cx < 1000; cx++)
+		{
+			int v = (14 * (hash(hash(cx) + hash(cy)) & 0xFFFF)) >> 16;
+			printf("%i %u -> %u\r", cy, cx, v);
+			histo[v]++;
+			follow[last][v]++;
+			last = v;
+		}
+	for (int cx = 0; cx < 14; cx++)
+		printf("%i\n", histo[cx]);
+	for (int cy = 0; cy < 14; cy++)
+	{
+		for (int cx = 0; cx < 14; cx++)
+		{
+			printf(" %i ", follow[cx][cy]);
+		}
+		printf("\n");
+	}
 	DEVMODE dev_mode;
 	const char *fixed[3];
 	fixed[DMDFO_DEFAULT] = "default";
@@ -95,7 +174,7 @@ int main(void)
 	glBindTexture(GL_TEXTURE_1D, hex_tex);
 	unsigned char hex[16];
 	for (int cx = 0; cx < 16; cx++)
-		hex[cx] = cx *15;
+		hex[cx] = cx*cx;
 	glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 	glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	
@@ -119,7 +198,9 @@ int main(void)
 		glSelectBuffer(1024, selectBuffer);
 		glRenderMode(GL_SELECT);
 		glInitNames();
-		int sx = -1, sy;
+
+		entity_map.clear();
+
 		for (int pass = 0; pass < 2; pass++)
 		{
 			glLoadIdentity();
@@ -132,35 +213,26 @@ int main(void)
 			else
 			{
 			}
-			glScaled(0.1, 0.1, 1);
-
-			for (int x = 0; x < 5; x++)
-				for (int y = 0; y < 5; y++)
-				{
-					glPushName((x << 16) | y);
-					glPushMatrix();
-					glTranslated(1.5 * x - 1.5 * y, m_1sqrt3 * (x + y), 0);
-					if (x == sx && y == sy)
-						glColor3d(1, 0, 0);
-					else
-						glColor3d(1, 1, 1);
-					glBegin(GL_TRIANGLE_FAN);
-					glTexCoord1d(0);
-					glVertex2d(0, 0);
-					glTexCoord1d(1);
-					for (int cx = 0; cx <= 6; cx++)
-						glVertex2d(hex_x[cx], hex_y[cx]);
-					glEnd();
-					glPopMatrix();
-					glPopName();
-				}
+			DrawScene(pass);
 			GLuint s = glRenderMode(GL_RENDER);
 			glEnable(GL_TEXTURE_1D);
 			if (s)
 			{
-				sx = selectBuffer[3] >> 16;
-				sy = selectBuffer[3] & 0xFFFF;
-				printf("%i: %i %i\n", s, selectBuffer[3] >> 16, selectBuffer[3] & 0xFFFF);
+				int ptr = 0;
+				for (int idx = 0; idx < s; idx++)
+				{
+					int count = selectBuffer[ptr++];
+					int z0 = selectBuffer[ptr++];
+					int z1 = selectBuffer[ptr++];
+					if (count)
+					{
+						int id = selectBuffer[ptr];
+						sx = entity_map[id].id >> 16;
+						sy = entity_map[id].id & 0xFFFF;
+					}
+					ptr += count;
+				}
+				printf("%i: %i %i\n", s, sx, sy);
 			}
 		}
 		glLoadIdentity();
