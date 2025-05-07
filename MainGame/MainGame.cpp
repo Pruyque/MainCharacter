@@ -4,6 +4,9 @@
 #include <stdint.h>
 #define _USE_MATH_DEFINES
 #include <math.h>
+
+#include "gltf.h"
+
 #pragma comment(lib, "opengl32")
 
 int mx = 0, my = 0;
@@ -107,8 +110,53 @@ unsigned int hash(unsigned int x, unsigned int seed) // 24 bits
 	return (((x * fi * x))>>8)^seed;
 }
 
+struct file_mapping
+{
+	HANDLE file;
+	DWORD size;
+	HANDLE mapping = 0;
+	const unsigned char* base = 0;
+	file_mapping(const char* file_name)
+	{
+		file = CreateFileA(file_name, GENERIC_ALL, 0, 0, OPEN_EXISTING, 0, 0);
+		if (file != INVALID_HANDLE_VALUE)
+		{
+			size = GetFileSize(file, 0);
+			mapping = CreateFileMapping(file, 0, FILE_MAP_READ, 0, size, 0);
+			if (mapping)
+				base = (const unsigned char*)MapViewOfFile(mapping, PAGE_READONLY, 0, 0, size);
+		}
+	}
+	operator const void* ()
+	{
+		return base;
+	}
+	operator const unsigned char* ()
+	{
+		return base;
+	}
+	~file_mapping()
+	{
+		if (base)
+			UnmapViewOfFile(base);
+		if (mapping)
+			CloseHandle(mapping);
+		if (file != INVALID_HANDLE_VALUE)
+			CloseHandle(file);
+	}
+};
+
 int main(void)
 {
+
+	{
+		file_mapping m("../hex.glb");
+		gltf model(m);
+
+
+		printf("Read\n");
+	}
+
 	int histo[14] = { 0 };
 	int follow[14][14] = { 0 };
 	int last = 0;
