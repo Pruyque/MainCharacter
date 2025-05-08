@@ -17,8 +17,13 @@ LRESULT wndProc(HWND wnd, UINT msg, WPARAM wParam, LPARAM lParam)
 	{
 	case WM_MOUSEMOVE:
 	{
-		mx = lParam & 0xFFFF;
-		my = lParam >> 16;
+		int _mx = lParam & 0xFFFF;
+		int _my = lParam >> 16;
+
+		SetCursorPos(100, 100);
+		mx += _mx - 100;
+		my += _my - 100;
+		
 		printf("m: %i %i\n", mx, my);
 	}
 	}
@@ -118,13 +123,19 @@ struct file_mapping
 	const unsigned char* base = 0;
 	file_mapping(const char* file_name)
 	{
-		file = CreateFileA(file_name, GENERIC_ALL, 0, 0, OPEN_EXISTING, 0, 0);
+		file = CreateFileA(file_name, GENERIC_READ|GENERIC_WRITE, 0, 0, OPEN_EXISTING, 0, 0);
 		if (file != INVALID_HANDLE_VALUE)
 		{
 			size = GetFileSize(file, 0);
 			mapping = CreateFileMapping(file, 0, FILE_MAP_READ, 0, size, 0);
 			if (mapping)
 				base = (const unsigned char*)MapViewOfFile(mapping, PAGE_READONLY, 0, 0, size);
+		}
+		else
+		{
+			char message[1024];
+			FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM, 0, GetLastError(), 0, message, 1024, 0);
+			printf("Error: %s\n", message);
 		}
 	}
 	operator const void* ()
@@ -146,17 +157,21 @@ struct file_mapping
 	}
 };
 
+extern "C" {
+	_declspec(dllexport) DWORD NvOptimusEnablement = 0x00000001;
+}
+
 int main(void)
 {
-
+	
 	{
-		file_mapping m("../hex.glb");
+		file_mapping m("..\\hex.glb");
 		gltf model(m);
 
 
 		printf("Read\n");
 	}
-
+	/*
 	int histo[14] = { 0 };
 	int follow[14][14] = { 0 };
 	int last = 0;
@@ -178,6 +193,8 @@ int main(void)
 		}
 		printf("\n");
 	}
+
+	*/
 	DEVMODE dev_mode;
 	const char *fixed[3];
 	fixed[DMDFO_DEFAULT] = "default";
@@ -186,10 +203,11 @@ int main(void)
 	
 	for (int cx = 0; EnumDisplaySettings(0, cx, &dev_mode); cx++)
 	{
-		printf("%ix%i@%iHz %s // %hi\n", dev_mode.dmPelsWidth, dev_mode.dmPelsHeight, dev_mode.dmDisplayFrequency, fixed[dev_mode.dmDisplayFixedOutput], dev_mode.dmYResolution);
-		if (dev_mode.dmPelsWidth == 1024 && dev_mode.dmPelsHeight == 768)
+
+		printf("%s %ix%i@%iHz %s // %hi\n", dev_mode.dmDeviceName, dev_mode.dmPelsWidth, dev_mode.dmPelsHeight, dev_mode.dmDisplayFrequency, fixed[dev_mode.dmDisplayFixedOutput], dev_mode.dmYResolution);
+		if (dev_mode.dmPelsWidth == 800 && dev_mode.dmPelsHeight == 600)
 		{
-			//ChangeDisplaySettings(&dev_mode, CDS_FULLSCREEN);
+//			ChangeDisplaySettings(&dev_mode, CDS_FULLSCREEN);
 			break;
 		}
 	}
@@ -225,6 +243,8 @@ int main(void)
 	ShowCursor(FALSE);
 
 	double last_time = Time();
+
+	printf("%s\n", glGetString(GL_VENDOR));
 
 	GLuint hex_tex;
 	glGenTextures(1, &hex_tex);
