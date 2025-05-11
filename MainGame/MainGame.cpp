@@ -11,6 +11,50 @@
 
 int mx = 0, my = 0;
 
+
+struct file_mapping
+{
+	HANDLE file;
+	DWORD size;
+	HANDLE mapping = 0;
+	const unsigned char* base = 0;
+	file_mapping(const char* file_name)
+	{
+		file = CreateFileA(file_name, GENERIC_READ | GENERIC_WRITE, 0, 0, OPEN_EXISTING, 0, 0);
+		if (file != INVALID_HANDLE_VALUE)
+		{
+			size = GetFileSize(file, 0);
+			mapping = CreateFileMapping(file, 0, FILE_MAP_READ, 0, size, 0);
+			if (mapping)
+				base = (const unsigned char*)MapViewOfFile(mapping, PAGE_READONLY, 0, 0, size);
+		}
+		else
+		{
+			char message[1024];
+			FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM, 0, GetLastError(), 0, message, 1024, 0);
+			printf("Error: %s\n", message);
+		}
+	}
+	operator const void* ()
+	{
+		return base;
+	}
+	operator const unsigned char* ()
+	{
+		return base;
+	}
+	~file_mapping()
+	{
+		if (base)
+			UnmapViewOfFile(base);
+		if (mapping)
+			CloseHandle(mapping);
+		if (file != INVALID_HANDLE_VALUE)
+			CloseHandle(file);
+	}
+};
+
+
 LRESULT wndProc(HWND wnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
 	switch (msg)
@@ -72,6 +116,9 @@ unsigned int hash2(unsigned int x, unsigned int y, unsigned int seed)
 {
 	return hash(hash(x+y, seed) ^ hash(x, seed), seed<<1);
 }
+
+gltf model(file_mapping("..\\hex.glb"));
+
 void DrawScene(bool high_quality)
 {
 	if (high_quality)
@@ -96,6 +143,11 @@ void DrawScene(bool high_quality)
 				glColor3d(1, 0, 0);
 			else
 				glColor3d((q&1)+0.5, ((q>>1)&1)+0.5, ((q>>2)&1)+0.5);
+
+
+			model.draw("Circle");
+
+/*
 			glBegin(GL_TRIANGLE_FAN);
 			glTexCoord1d(0);
 			glVertex2d(0, 0);
@@ -103,6 +155,8 @@ void DrawScene(bool high_quality)
 			for (int cx = 0; cx <= 6; cx++)
 				glVertex2d(hex_x[cx], hex_y[cx]);
 			glEnd();
+			*/
+
 			glPopMatrix();
 			glPopName();
 		}
@@ -115,48 +169,6 @@ unsigned int hash(unsigned int x, unsigned int seed) // 24 bits
 	return (((x * fi * x))>>8)^seed;
 }
 
-struct file_mapping
-{
-	HANDLE file;
-	DWORD size;
-	HANDLE mapping = 0;
-	const unsigned char* base = 0;
-	file_mapping(const char* file_name)
-	{
-		file = CreateFileA(file_name, GENERIC_READ|GENERIC_WRITE, 0, 0, OPEN_EXISTING, 0, 0);
-		if (file != INVALID_HANDLE_VALUE)
-		{
-			size = GetFileSize(file, 0);
-			mapping = CreateFileMapping(file, 0, FILE_MAP_READ, 0, size, 0);
-			if (mapping)
-				base = (const unsigned char*)MapViewOfFile(mapping, PAGE_READONLY, 0, 0, size);
-		}
-		else
-		{
-			char message[1024];
-			FormatMessageA(FORMAT_MESSAGE_FROM_SYSTEM, 0, GetLastError(), 0, message, 1024, 0);
-			printf("Error: %s\n", message);
-		}
-	}
-	operator const void* ()
-	{
-		return base;
-	}
-	operator const unsigned char* ()
-	{
-		return base;
-	}
-	~file_mapping()
-	{
-		if (base)
-			UnmapViewOfFile(base);
-		if (mapping)
-			CloseHandle(mapping);
-		if (file != INVALID_HANDLE_VALUE)
-			CloseHandle(file);
-	}
-};
-
 extern "C" {
 	_declspec(dllexport) DWORD NvOptimusEnablement = 0x00000001;
 }
@@ -164,13 +176,8 @@ extern "C" {
 int main(void)
 {
 	
-	{
-		file_mapping m("..\\hex.glb");
-		gltf model(m);
 
 
-		printf("Read\n");
-	}
 	/*
 	int histo[14] = { 0 };
 	int follow[14][14] = { 0 };
