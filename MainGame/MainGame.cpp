@@ -10,7 +10,8 @@
 #pragma comment(lib, "opengl32")
 
 int mx = 0, my = 0;
-
+float camx = 2, camy = -20;
+float aa = 0;
 
 struct file_mapping
 {
@@ -54,7 +55,7 @@ struct file_mapping
 	}
 };
 
-
+bool keys[4] = { 0 };
 LRESULT wndProc(HWND wnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
 	switch (msg)
@@ -68,8 +69,24 @@ LRESULT wndProc(HWND wnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		mx += _mx - 100;
 		my += _my - 100;
 		
-		printf("m: %i %i\n", mx, my);
+//		printf("m: %i %i\n", mx, my);
 	}
+	break;
+	case WM_KEYDOWN:
+	{
+		printf("Keydown: %X %X\n", wParam, lParam);
+		int k = wParam - 0x25;
+		if (k >= 0 && k < 4)
+			keys[k] = true;
+	}
+	break;
+	case WM_KEYUP:
+	{
+		int k = wParam - 0x25;
+		if (k >= 0 && k < 4)
+			keys[k] = false;
+	}
+	break;
 	}
 	return CallWindowProc(DefWindowProc, wnd, msg, wParam, lParam);
 }
@@ -129,33 +146,34 @@ void DrawScene(bool high_quality)
 	{
 		glDisable(GL_TEXTURE_1D);
 	}
-	glScaled(0.1, 0.1, 1);
-	int seed = Time();
-	for (int x = 0; x < 20; x++)
-		for (int y = 0; y < 20; y++)
+
+	glMatrixMode(GL_MODELVIEW);
+	glLoadIdentity();
+	int seed = 42;// Time();
+	int count = 0;
+	for (int x = -9; x < 10; x++)
+		for (int y = 0; y < 15; y++)
 		{
+			count++;
 			glPushName(entity_map.size());
 			entity_map.push_back(entity((x << 16) | y));
 			glPushMatrix();
-			glTranslated(1.5 * x - 1.5 * y, m_1sqrt3 * (x + y), 0);
+			glTranslated(m_1sqrt3 * (2*x + (y&1) - 0.5), 1.5 * y,  0);
+			glScalef(0.9, 0.9, 0.9);
 			unsigned char q = hash2(x+6, y+6, seed);
 			if (x == sx && y == sy)
 				glColor3d(1, 0, 0);
+			else if (abs(x - sx) == 1 && y == sy)
+				glColor3d(0, 1, 0);
+			else if (abs(y - sy) == 1 && x == sx - (~sy&1))
+				glColor3d(0, 0, 1);
+			else if (abs(y - sy) == 1 && x == sx + (sy & 1))
+				glColor3d(0, 1, 1);
 			else
-				glColor3d((q&1)+0.5, ((q>>1)&1)+0.5, ((q>>2)&1)+0.5);
+				glColor3d((float)x / 20., (float)y / 20., count / 5.);
 
 
 			model.draw("Circle");
-
-/*
-			glBegin(GL_TRIANGLE_FAN);
-			glTexCoord1d(0);
-			glVertex2d(0, 0);
-			glTexCoord1d(1);
-			for (int cx = 0; cx <= 6; cx++)
-				glVertex2d(hex_x[cx], hex_y[cx]);
-			glEnd();
-			*/
 
 			glPopMatrix();
 			glPopName();
@@ -208,11 +226,14 @@ int main(void)
 	fixed[DMDFO_CENTER] = "center";
 	fixed[DMDFO_STRETCH] = "stretch";
 	
+	int width = 800;
+	int height = 600;
+
 	for (int cx = 0; EnumDisplaySettings(0, cx, &dev_mode); cx++)
 	{
 
 		printf("%s %ix%i@%iHz %s // %hi\n", dev_mode.dmDeviceName, dev_mode.dmPelsWidth, dev_mode.dmPelsHeight, dev_mode.dmDisplayFrequency, fixed[dev_mode.dmDisplayFixedOutput], dev_mode.dmYResolution);
-		if (dev_mode.dmPelsWidth == 800 && dev_mode.dmPelsHeight == 600)
+		if (dev_mode.dmPelsWidth == width && dev_mode.dmPelsHeight == height)
 		{
 //			ChangeDisplaySettings(&dev_mode, CDS_FULLSCREEN);
 			break;
@@ -276,7 +297,7 @@ int main(void)
 		double now = Time();
 //		printf("%f\n", 1. / (now - last_time));
 		glEnable(GL_TEXTURE_1D);
-		glClearColor(sin(now), cos(now), -sin(now), 1);
+		glClearColor(0,0,0, 1);
 		glClear(GL_COLOR_BUFFER_BIT);
 		GLuint selectBuffer[1024];
 		glSelectBuffer(1024, selectBuffer);
@@ -287,16 +308,24 @@ int main(void)
 
 		for (int pass = 0; pass < 2; pass++)
 		{
+			glMatrixMode(GL_PROJECTION);
 			glLoadIdentity();
 
 			if (!pass)
 			{ // Select projection for one pixel
-				glScaled(512, 384, 1);
-				glTranslated(-(mx - 512.) / 512., -(384. - my) / 384., 0);
+				glScaled(width / 2., height / 2., 1);
+				glTranslated(-(2.*mx - width) / width, -(height - 2.*my) / height, 0);
 			}
 			else
 			{
 			}
+
+// Setup projection
+			glFrustum(-10., 10., -10. * height / width, 10. * height / width, 10, 30);
+			glTranslated(0, 0, -20);
+			glRotated(aa, 1, 0, 0);
+//			glRotated(-60, 0, 0, 1);
+			glTranslated(0, camy, 0);
 			DrawScene(pass);
 			GLuint s = glRenderMode(GL_RENDER);
 			glEnable(GL_TEXTURE_1D);
@@ -316,15 +345,18 @@ int main(void)
 					}
 					ptr += count;
 				}
-				printf("%i: %i %i\n", s, sx, sy);
+			//	printf("%i: %i %i\n", s, sx, sy);
 			}
 		}
+		glMatrixMode(GL_PROJECTION);
+		glLoadIdentity();
+		glMatrixMode(GL_MODELVIEW);
 		glLoadIdentity();
 		glPointSize(5);
 		glDisable(GL_TEXTURE_1D);
 		glColor3d(1, 1, 1);
 		glBegin(GL_POINTS);
-		glVertex2d(-1 + 2. * mx / 1024., 1 - 2. * my / 768.);
+		glVertex2d(-1 + 2. * mx / width, 1 - 2. * my / height);
 		glEnd();
 
 		last_time = now;
@@ -332,6 +364,15 @@ int main(void)
 		next_frame += 0.03;
 		if (next_frame > now)
 			Sleep(1000 * (next_frame - now));
+		if (keys[0])
+			aa -= 0.1;
+		if (keys[1])
+			camy += 0.1;
+		if (keys[2])
+			aa += 0.1;
+		if (keys[3])
+			camy -= 0.1;
+		//printf("%f %f\n", camx, camy);
 	}
 	return 0;
 }
