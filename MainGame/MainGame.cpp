@@ -69,6 +69,7 @@ LRESULT wndProc(HWND wnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		mx += _mx - 100;
 		my += _my - 100;
 		
+
 //		printf("m: %i %i\n", mx, my);
 	}
 	break;
@@ -136,7 +137,7 @@ unsigned int hash2(unsigned int x, unsigned int y, unsigned int seed)
 
 gltf model(file_mapping("..\\hex.glb"));
 
-void DrawScene(bool high_quality)
+void DrawScene(bool high_quality, int y_off = 0)
 {
 	if (high_quality)
 	{
@@ -149,7 +150,7 @@ void DrawScene(bool high_quality)
 
 	glMatrixMode(GL_MODELVIEW);
 	glLoadIdentity();
-	int seed = 42;// Time();
+	int seed = 42;
 	int count = 0;
 	for (int x = -9; x < 10; x++)
 		for (int y = 0; y < 15; y++)
@@ -160,7 +161,7 @@ void DrawScene(bool high_quality)
 			glPushMatrix();
 			glTranslated(m_1sqrt3 * (2*x + (y&1) - 0.5), 1.5 * y,  0);
 			glScalef(0.9, 0.9, 0.9);
-			unsigned char q = hash2(x+6, y+6, seed);
+			unsigned char q = hash2(x+6, y_off + y+6, seed);
 			if (x == sx && y == sy)
 				glColor3d(1, 0, 0);
 			else if (abs(x - sx) == 1 && y == sy)
@@ -170,7 +171,7 @@ void DrawScene(bool high_quality)
 			else if (abs(y - sy) == 1 && x == sx + (sy & 1))
 				glColor3d(0, 1, 1);
 			else
-				glColor3d((float)x / 20., (float)y / 20., count / 5.);
+				glColor3d(q&1, q&2, q&4);
 
 
 			model.draw("Circle");
@@ -184,7 +185,7 @@ void DrawScene(bool high_quality)
 unsigned int hash(unsigned int x, unsigned int seed) // 24 bits
 {
 	const unsigned int fi = 2654435769; // 1/fi * 2^23
-	return (((x * fi * x))>>8)^seed;
+	return (((x * fi * (x^seed)))>>8);
 }
 
 extern "C" {
@@ -284,7 +285,7 @@ int main(void)
 	glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 	
 	glTexImage1D(GL_TEXTURE_1D, 0, GL_RGB, 16, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE, hex);
-
+	float y = 0;
 	double next_frame = Time() + 0.03;
 	while (1)
 	{
@@ -324,9 +325,9 @@ int main(void)
 			glFrustum(-10., 10., -10. * height / width, 10. * height / width, 10, 30);
 			glTranslated(0, 0, -20);
 			glRotated(aa, 1, 0, 0);
-//			glRotated(-60, 0, 0, 1);
-			glTranslated(0, camy, 0);
-			DrawScene(pass);
+			double y_off;
+			glTranslated(0, modf(camy / 1.5 / 2,&y_off)*2 * 1.5, 0);
+			DrawScene(pass, -2 * (int)y_off);
 			GLuint s = glRenderMode(GL_RENDER);
 			glEnable(GL_TEXTURE_1D);
 			if (s)
