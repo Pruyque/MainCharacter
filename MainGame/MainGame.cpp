@@ -54,7 +54,7 @@ struct file_mapping
 			CloseHandle(file);
 	}
 };
-
+int width, height;
 bool keys[4] = { 0 };
 LRESULT wndProc(HWND wnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
@@ -68,7 +68,12 @@ LRESULT wndProc(HWND wnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		SetCursorPos(100, 100);
 		mx += _mx - 100;
 		my += _my - 100;
-		
+
+		mx = max(mx, 0);
+		my = max(my, 0);
+
+		mx = min(mx, width);
+		my = min(my, height);
 
 //		printf("m: %i %i\n", mx, my);
 	}
@@ -160,7 +165,7 @@ void DrawScene(bool high_quality, int y_off = 0)
 			entity_map.push_back(entity((x << 16) | y));
 			glPushMatrix();
 			glTranslated(m_1sqrt3 * (2*x + (y&1) - 0.5), 1.5 * y,  0);
-			glScalef(0.9, 0.9, 0.9);
+			glScalef(0.9, 0.9, -0.9);
 			unsigned char q = hash2(x+6, y_off + y+6, seed);
 			if (x == sx && y == sy)
 				glColor3d(1, 0, 0);
@@ -236,6 +241,8 @@ int main(void)
 		printf("%s %ix%i@%iHz %s // %hi\n", dev_mode.dmDeviceName, dev_mode.dmPelsWidth, dev_mode.dmPelsHeight, dev_mode.dmDisplayFrequency, fixed[dev_mode.dmDisplayFixedOutput], dev_mode.dmYResolution);
 		if (dev_mode.dmPelsWidth == width && dev_mode.dmPelsHeight == height)
 		{
+			::width = width;
+			::height = height;
 //			ChangeDisplaySettings(&dev_mode, CDS_FULLSCREEN);
 			break;
 		}
@@ -287,6 +294,10 @@ int main(void)
 	glTexImage1D(GL_TEXTURE_1D, 0, GL_RGB, 16, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE, hex);
 	float y = 0;
 	double next_frame = Time() + 0.03;
+	
+	glEnable(GL_DEPTH_TEST);
+
+
 	while (1)
 	{
 		MSG msg;
@@ -299,7 +310,7 @@ int main(void)
 //		printf("%f\n", 1. / (now - last_time));
 		glEnable(GL_TEXTURE_1D);
 		glClearColor(0,0,0, 1);
-		glClear(GL_COLOR_BUFFER_BIT);
+		glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
 		GLuint selectBuffer[1024];
 		glSelectBuffer(1024, selectBuffer);
 		glRenderMode(GL_SELECT);
@@ -332,14 +343,20 @@ int main(void)
 			glEnable(GL_TEXTURE_1D);
 			if (s)
 			{
+				if (s > 1)
+				{
+					printf("multi\n");
+				}
 				int ptr = 0;
+				int zmin = 0xFFFFFFFF;
 				for (int idx = 0; idx < s; idx++)
 				{
 					int count = selectBuffer[ptr++];
 					int z0 = selectBuffer[ptr++];
 					int z1 = selectBuffer[ptr++];
-					if (count)
+					if (count && z0 <= zmin)
 					{
+						zmin = z0;
 						int id = selectBuffer[ptr];
 						sx = entity_map[id].id >> 16;
 						sy = entity_map[id].id & 0xFFFF;
