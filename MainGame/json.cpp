@@ -216,6 +216,31 @@ json_number* json_number::read(const char*& ptr)
 				ptr++;
 			}
 		}
+		if (*ptr == 'e')
+		{
+			*ptr++;
+			float scale = 0;
+			bool neg = false;
+			if (*ptr == '-')
+			{
+				neg = true;
+				ptr++;
+			}
+			while (*ptr >= '0' && *ptr <= '9')
+			{
+				scale *= 10;
+				scale += *ptr - '0';
+				ptr++;
+			}
+			if (neg)
+				scale = -scale;
+
+			whole *= powf(10, scale);
+
+
+
+
+		}
 		if (negative)
 			whole = -whole;
 		return new json_number(whole);

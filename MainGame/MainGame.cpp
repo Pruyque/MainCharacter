@@ -11,7 +11,7 @@
 
 int mx = 0, my = 0;
 float camx = 2, camy = -20;
-float aa = 0;
+float aa = -50;
 
 struct file_mapping
 {
@@ -158,14 +158,14 @@ void DrawScene(bool high_quality, int y_off = 0)
 	int seed = 42;
 	int count = 0;
 	for (int x = -9; x < 10; x++)
-		for (int y = 0; y < 15; y++)
+		for (int y = 0; y < 30; y++)
 		{
 			count++;
 			glPushName(entity_map.size());
 			entity_map.push_back(entity((x << 16) | y));
 			glPushMatrix();
-			glTranslated(m_1sqrt3 * (2*x + (y&1) - 0.5), 1.5 * y,  0);
-			glScalef(0.9, 0.9, -0.9);
+			glTranslated(m_1sqrt3 * (2*x + (y&1) - 0.5), 1.5 * y, 0);
+			glScalef(1, 1, -1);
 			unsigned char q = hash2(x+6, y_off + y+6, seed);
 			if (x == sx && y == sy)
 				glColor3d(1, 0, 0);
@@ -176,10 +176,11 @@ void DrawScene(bool high_quality, int y_off = 0)
 			else if (abs(y - sy) == 1 && x == sx + (sy & 1))
 				glColor3d(0, 1, 1);
 			else
-				glColor3d(q&1, q&2, q&4);
+				glColor3d(0.3, 0.8, 0.5);
 
 
-			model.draw("Circle");
+			
+			model.draw(q&2?"Soil":q&1?"Tree":"Plant");
 
 			glPopMatrix();
 			glPopName();
@@ -296,7 +297,13 @@ int main(void)
 	double next_frame = Time() + 0.03;
 	
 	glEnable(GL_DEPTH_TEST);
-
+	glEnable(GL_LIGHT0);
+	glEnable(GL_LIGHTING);
+	glEnable(GL_NORMALIZE);
+	GLfloat light_pos[4] = { 1,1,1,0 };
+	GLfloat ambient[4] = { 0.3, 0.8, 0.5, 1 };
+	glLightfv(GL_LIGHT0, GL_AMBIENT, ambient);
+	glLightfv(GL_LIGHT0, GL_POSITION, light_pos);
 
 	while (1)
 	{
@@ -333,11 +340,12 @@ int main(void)
 			}
 
 // Setup projection
-			glFrustum(-10., 10., -10. * height / width, 10. * height / width, 10, 30);
-			glTranslated(0, 0, -20);
+			glFrustum(-10., 10., -10. * height / width, 10. * height / width, 10, 90);
+			glTranslated(0, 0, -50);
 			glRotated(aa, 1, 0, 0);
 			double y_off;
-			glTranslated(0, modf(camy / 1.5 / 2,&y_off)*2 * 1.5, 0);
+			glScaled(3, 3, 3);
+			glTranslated(0, camx+modf(camy / 1.5 / 2,&y_off)*2 * 1.5, 0);
 			DrawScene(pass, -2 * (int)y_off);
 			GLuint s = glRenderMode(GL_RENDER);
 			glEnable(GL_TEXTURE_1D);
@@ -383,11 +391,11 @@ int main(void)
 		if (next_frame > now)
 			Sleep(1000 * (next_frame - now));
 		if (keys[0])
-			aa -= 0.1;
+			camx -= 0.1;
 		if (keys[1])
 			camy += 0.1;
 		if (keys[2])
-			aa += 0.1;
+			camx += 0.1;
 		if (keys[3])
 			camy -= 0.1;
 		//printf("%f %f\n", camx, camy);
