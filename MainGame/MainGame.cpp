@@ -10,7 +10,7 @@
 #pragma comment(lib, "opengl32")
 
 int mx = 0, my = 0;
-float camx = 2, camy = -20;
+float camx = 10, camy = 0;
 float aa = -50;
 
 struct file_mapping
@@ -133,10 +133,81 @@ struct entity
 };
 
 std::vector<entity> entity_map;
+int world[32][32];
+int qq = 0;
+void WorldStep()
+{
+	int wt[32][32] = { 0 };
+	for (int sx = 0; sx < 32; sx ++)
+		for (int sy = 0; sy < 32; sy++)
+		{
+			int counts[3] = { 0 };
+			int sp = 0;
+
+			for (int cx = (int)sx - 1; cx <= sx + 1; cx++)
+				for (int cy = (int)sy - 1; cy <= sy + 1; cy++)
+				{
+					int x = cx & 31;
+					int y = cy & 31;
+
+					int q = -1;
+
+					if (x == sx && y == sy)
+						sp = world[x][y];
+					else if (abs(x - sx) == 1 && y == sy)
+						q = world[x][y];
+					else if (abs(y - sy) == 1 && x == sx - (~sy & 1))
+						q = world[x][y];
+					else if (abs(y - sy) == 1 && x == sx + (sy & 1))
+						q = world[x][y];
+
+					if (q != -1)
+					{
+						int t = q & 2 ? 2 : q & 1 ? 1 : 0;
+						counts[t]++;
+					}
+				}
+
+			wt[sx][sy] = world[sx][sy];
+
+			switch (sp)
+			{
+			case 0:
+			{
+				if (counts[1] > 0)
+					wt[sx][sy] = 1;
+				if (counts[2] == 4)
+					wt[sx][sy] = 1;
+			}
+				break;
+			case 1:
+			{
+				if (counts[1] == 6 || counts[2] == 6)
+					wt[sx][sy] = 0;
+				else
+					if (counts[1] >= 2)
+						wt[sx][sy] = 2;
+			}
+				break;
+			case 2:
+			{
+				if (counts[2] == 6)
+					wt[sx][sy] = 0;
+			}
+				break;
+			default:
+				wt[sx][sy] = 0;
+			}
+		}
+	memcpy(world, wt, 32 * 32 * sizeof(int));
+}
 
 unsigned int hash(unsigned int x, unsigned int seed); // 24 bits
 unsigned int hash2(unsigned int x, unsigned int y, unsigned int seed)
 {
+	return world[x & 31][y & 31];
+
+	seed += qq;
 	return hash(hash(x+y, seed) ^ hash(x, seed), seed<<1);
 }
 
@@ -165,7 +236,7 @@ void DrawScene(bool high_quality, int y_off = 0)
 			entity_map.push_back(entity((x << 16) | y));
 			glPushMatrix();
 			glTranslated(m_1sqrt3 * (2*x + (y&1) - 0.5), 1.5 * y, 0);
-			glScalef(1, 1, -1);
+			glScalef(.9, .9, -.9);
 			unsigned char q = hash2(x+6, y_off + y+6, seed);
 			if (x == sx && y == sy)
 				glColor3d(1, 0, 0);
@@ -180,7 +251,7 @@ void DrawScene(bool high_quality, int y_off = 0)
 
 
 			
-			model.draw(q&2?"Soil":q&1?"Tree":"Plant");
+			model.draw(q&2?"Tree":q&1?"Plant":"Soil");
 
 			glPopMatrix();
 			glPopName();
@@ -198,35 +269,40 @@ extern "C" {
 	_declspec(dllexport) DWORD NvOptimusEnablement = 0x00000001;
 }
 
+void generateViewMatrix(float x1, float x2, float h, float m[4][4])
+{
+	float d1 = sqrtf(x1 * x1 + h * h);
+	float d2 = sqrtf(x2 * x2 + h * h);
+
+	float qx = (d1 * x2 + d2 * x1) / (d1 + d2);
+
+	float a = qx;
+	float b = -h;
+	float det = a * a + b * b;
+	float c = sqrtf(b * b / det);
+	float s = -sqrtf(a * a / det);
+	memset(m, 0, 4 * 4 * sizeof(float));
+	
+	m[0][0] = 1/c;
+	
+	m[2][1] = c/c;
+	m[2][3] = s;
+	
+	m[1][1] = -s/c;
+	m[1][3] = c;
+	
+	m[3][0] = 0/c;
+	m[3][1] = -c * h/c;
+	m[3][3] = -s * h;
+	m[3][2] = 1;
+
+
+	printf("%f %f %f %f\n", x1, x2, qx, h);
+	// Needs f..
+}
+
 int main(void)
 {
-	
-
-
-	/*
-	int histo[14] = { 0 };
-	int follow[14][14] = { 0 };
-	int last = 0;
-	for (int cy = 0; cy < 500; cy ++)
-		for (unsigned int cx = 0; cx < 500; cx++)
-		{
-			int v = (14 * (hash(hash(cx, 12) ^ hash(cy,12), 12))) >> 24;
-			histo[v]++;
-			follow[last][v]++;
-			last = v;
-		}
-	for (int cx = 0; cx < 14; cx++)
-		printf("%i\n", histo[cx]);
-	for (int cy = 0; cy < 14; cy++)
-	{
-		for (int cx = 0; cx < 14; cx++)
-		{
-			printf(" %i ", follow[cx][cy]);
-		}
-		printf("\n");
-	}
-
-	*/
 	DEVMODE dev_mode;
 	const char *fixed[3];
 	fixed[DMDFO_DEFAULT] = "default";
@@ -235,6 +311,12 @@ int main(void)
 	
 	int width = 800;
 	int height = 600;
+
+	for (int cx = 0; cx < 32; cx++)
+		for (int cy = 0; cy < 32; cy++)
+			world[cx][cy] = 0;
+
+	world[4][24] = 1;
 
 	for (int cx = 0; EnumDisplaySettings(0, cx, &dev_mode); cx++)
 	{
@@ -296,7 +378,8 @@ int main(void)
 	float y = 0;
 	double next_frame = Time() + 0.03;
 	
-	glEnable(GL_DEPTH_TEST);
+	glDepthFunc(GL_GREATER);
+	glClearDepth(0);
 	glEnable(GL_LIGHT0);
 	glEnable(GL_LIGHTING);
 	glEnable(GL_NORMALIZE);
@@ -305,8 +388,15 @@ int main(void)
 	glLightfv(GL_LIGHT0, GL_AMBIENT, ambient);
 	glLightfv(GL_LIGHT0, GL_POSITION, light_pos);
 
+	double next_world_step = Time() + 1;
+
 	while (1)
 	{
+		if (Time() > next_world_step)
+		{
+			WorldStep();
+			next_world_step += 1;
+		}
 		MSG msg;
 		while (PeekMessage(&msg, 0, 0, 0, 1))
 		{
@@ -324,6 +414,7 @@ int main(void)
 		glInitNames();
 
 		entity_map.clear();
+		glEnable(GL_DEPTH_TEST);
 
 		for (int pass = 0; pass < 2; pass++)
 		{
@@ -332,24 +423,26 @@ int main(void)
 
 			if (!pass)
 			{ // Select projection for one pixel
+//				glViewport(0, 0, 1, 1);
 				glScaled(width / 2., height / 2., 1);
 				glTranslated(-(2.*mx - width) / width, -(height - 2.*my) / height, 0);
 			}
 			else
 			{
+				glViewport(0, 0, width, height);
 			}
 
 // Setup projection
-			glFrustum(-10., 10., -10. * height / width, 10. * height / width, 10, 90);
-			glTranslated(0, 0, -50);
-			glRotated(aa, 1, 0, 0);
+			float m[4][4];
+			generateViewMatrix(camy, camy+10, camx, m);
+			glMultMatrixf((GLfloat *)m);
 			double y_off;
 			glScaled(3, 3, 3);
-			glTranslated(0, camx+modf(camy / 1.5 / 2,&y_off)*2 * 1.5, 0);
+			glTranslated(0, modf(camy / 1.5 / 2,&y_off)*2 * 1.5, 0);
 			DrawScene(pass, -2 * (int)y_off);
 			GLuint s = glRenderMode(GL_RENDER);
 			glEnable(GL_TEXTURE_1D);
-			if (s)
+			if (s&&s!=-1)
 			{
 				if (s > 1)
 				{
@@ -379,6 +472,7 @@ int main(void)
 		glMatrixMode(GL_MODELVIEW);
 		glLoadIdentity();
 		glPointSize(5);
+		glDisable(GL_DEPTH_TEST);
 		glDisable(GL_TEXTURE_1D);
 		glColor3d(1, 1, 1);
 		glBegin(GL_POINTS);
