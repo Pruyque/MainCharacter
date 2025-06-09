@@ -205,23 +205,23 @@ void WorldStep()
 unsigned int hash(unsigned int x, unsigned int seed); // 24 bits
 unsigned int hash2(unsigned int x, unsigned int y, unsigned int seed)
 {
-	return world[x & 31][y & 31];
+//	return world[x & 31][y & 31];
 
 	seed += qq;
 	return hash(hash(x+y, seed) ^ hash(x, seed), seed<<1);
 }
 
 gltf model(file_mapping("..\\hex.glb"));
-
+GLuint hex_tex[16];
 void DrawScene(bool high_quality, int y_off = 0)
 {
 	if (high_quality)
 	{
-		glEnable(GL_TEXTURE_1D);
+		glEnable(GL_TEXTURE_2D);
 	}
 	else
 	{
-		glDisable(GL_TEXTURE_1D);
+		glDisable(GL_TEXTURE_2D);
 	}
 
 	glMatrixMode(GL_MODELVIEW);
@@ -236,18 +236,18 @@ void DrawScene(bool high_quality, int y_off = 0)
 			entity_map.push_back(entity((x << 16) | y));
 			glPushMatrix();
 			glTranslated(m_1sqrt3 * (2*x + (y&1) - 0.5), 1.5 * y, 0);
-			glScalef(.9, .9, -.9);
+			glScalef(1, 1, -1);
 			unsigned char q = hash2(x+6, y_off + y+6, seed);
 			if (x == sx && y == sy)
-				glColor3d(1, 0, 0);
+				glBindTexture(GL_TEXTURE_2D, hex_tex[15]);// glColor3d(1, 0, 0);
 			else if (abs(x - sx) == 1 && y == sy)
-				glColor3d(0, 1, 0);
+				glBindTexture(GL_TEXTURE_2D, hex_tex[1]);//glColor3d(0, 1, 0);
 			else if (abs(y - sy) == 1 && x == sx - (~sy&1))
-				glColor3d(0, 0, 1);
+				glBindTexture(GL_TEXTURE_2D, hex_tex[2]);//glColor3d(0, 0, 1);
 			else if (abs(y - sy) == 1 && x == sx + (sy & 1))
-				glColor3d(0, 1, 1);
+				glBindTexture(GL_TEXTURE_2D, hex_tex[3]);//glColor3d(0, 1, 1);
 			else
-				glColor3d(0.3, 0.8, 0.5);
+				glBindTexture(GL_TEXTURE_2D, hex_tex[4]);//glColor3d(0.3, 0.8, 0.5);
 
 
 			
@@ -279,26 +279,28 @@ void generateViewMatrix(float x1, float x2, float h, float m[4][4])
 	float a = qx;
 	float b = -h;
 	float det = a * a + b * b;
-	float c = sqrtf(b * b / det);
-	float s = -sqrtf(a * a / det);
+	float c = sqrtf(a * a / det);
+	float s = -sqrtf(b * b / det);
 	memset(m, 0, 4 * 4 * sizeof(float));
 	
-	m[0][0] = 1/c;
+	m[0][0] = 1;
 	
-	m[2][1] = c/c;
+	m[2][1] = c;
 	m[2][3] = s;
 	
-	m[1][1] = -s/c;
+	m[1][1] = -s;
 	m[1][3] = c;
 	
-	m[3][0] = 0/c;
-	m[3][1] = -c * h/c;
+	m[3][0] = 0;
+	m[3][1] = -c * h;
 	m[3][3] = -s * h;
 	m[3][2] = 1;
 
+	float f = -(m[1][3] * x1 + m[3][3]) / (m[1][1] * x1 + m[3][1]);
+	for (int cx = 0; cx < 2; cx++)
+		for (int cy = 0; cy < 4; cy++)
+			m[cy][cx] *= f;
 
-	printf("%f %f %f %f\n", x1, x2, qx, h);
-	// Needs f..
 }
 
 int main(void)
@@ -365,16 +367,20 @@ int main(void)
 
 	printf("%s\n", glGetString(GL_VENDOR));
 
-	GLuint hex_tex;
-	glGenTextures(1, &hex_tex);
-	glBindTexture(GL_TEXTURE_1D, hex_tex);
-	unsigned char hex[16];
+	glGenTextures(16, hex_tex);
+	unsigned long hex;
 	for (int cx = 0; cx < 16; cx++)
-		hex[cx] = cx*cx;
-	glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-	glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-	
-	glTexImage1D(GL_TEXTURE_1D, 0, GL_RGB, 16, 0, GL_LUMINANCE, GL_UNSIGNED_BYTE, hex);
+	{
+		glBindTexture(GL_TEXTURE_2D, hex_tex[cx]);
+		hex = cx & 1 ? 0xFF:0;
+		hex |= cx & 2 ? 0xFF00 : 0;
+		hex |= cx & 4 ? 0xFF00FF : 0;
+		hex |= cx & 8 ? 0x808080 : 0;
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB,1,1, 0, GL_RGBA, GL_UNSIGNED_BYTE, &hex);
+	}
 	float y = 0;
 	double next_frame = Time() + 0.03;
 	
@@ -394,7 +400,7 @@ int main(void)
 	{
 		if (Time() > next_world_step)
 		{
-			WorldStep();
+//			WorldStep();
 			next_world_step += 1;
 		}
 		MSG msg;
@@ -405,7 +411,7 @@ int main(void)
 		}
 		double now = Time();
 //		printf("%f\n", 1. / (now - last_time));
-		glEnable(GL_TEXTURE_1D);
+		glEnable(GL_TEXTURE_2D);
 		glClearColor(0,0,0, 1);
 		glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
 		GLuint selectBuffer[1024];
@@ -423,7 +429,7 @@ int main(void)
 
 			if (!pass)
 			{ // Select projection for one pixel
-//				glViewport(0, 0, 1, 1);
+				glViewport(0, 0, 1, 1);
 				glScaled(width / 2., height / 2., 1);
 				glTranslated(-(2.*mx - width) / width, -(height - 2.*my) / height, 0);
 			}
@@ -434,20 +440,14 @@ int main(void)
 
 // Setup projection
 			float m[4][4];
-			generateViewMatrix(camy, camy+10, camx, m);
+			generateViewMatrix(camy, camy+20, camx, m);
 			glMultMatrixf((GLfloat *)m);
 			double y_off;
-			glScaled(3, 3, 3);
-			glTranslated(0, modf(camy / 1.5 / 2,&y_off)*2 * 1.5, 0);
+			glTranslated(0, modf(-Time(),&y_off)*2 * 1.5, 0);
 			DrawScene(pass, -2 * (int)y_off);
 			GLuint s = glRenderMode(GL_RENDER);
-			glEnable(GL_TEXTURE_1D);
 			if (s&&s!=-1)
 			{
-				if (s > 1)
-				{
-					printf("multi\n");
-				}
 				int ptr = 0;
 				int zmin = 0xFFFFFFFF;
 				for (int idx = 0; idx < s; idx++)
@@ -467,17 +467,20 @@ int main(void)
 			//	printf("%i: %i %i\n", s, sx, sy);
 			}
 		}
+
+		glDisable(GL_LIGHTING);
 		glMatrixMode(GL_PROJECTION);
 		glLoadIdentity();
 		glMatrixMode(GL_MODELVIEW);
 		glLoadIdentity();
 		glPointSize(5);
 		glDisable(GL_DEPTH_TEST);
-		glDisable(GL_TEXTURE_1D);
-		glColor3d(1, 1, 1);
+		glDisable(GL_TEXTURE_2D);
+		glColor3d(1, 0, 1);
 		glBegin(GL_POINTS);
 		glVertex2d(-1 + 2. * mx / width, 1 - 2. * my / height);
 		glEnd();
+		glEnable(GL_LIGHTING);
 
 		last_time = now;
 		SwapBuffers(dc);
