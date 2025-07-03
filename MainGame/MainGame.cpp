@@ -60,6 +60,10 @@ LRESULT wndProc(HWND wnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
 	switch (msg)
 	{
+	case WM_CLOSE:
+		DestroyWindow(wnd);
+		PostQuitMessage(0);
+		break;
 	case WM_MOUSEMOVE:
 	{
 		int _mx = lParam & 0xFFFF;
@@ -74,8 +78,6 @@ LRESULT wndProc(HWND wnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
 		mx = min(mx, width);
 		my = min(my, height);
-
-//		printf("m: %i %i\n", mx, my);
 	}
 	break;
 	case WM_KEYDOWN:
@@ -116,9 +118,6 @@ double Time()
 
 const double m_1sqrt3 = sqrt(3.)/2.;
 
-const double hex_x[7] = { 1,0.5,-0.5,-1,-0.5,0.5 ,1};
-const double hex_y[7] = { 0, m_1sqrt3,m_1sqrt3,0,-m_1sqrt3,-m_1sqrt3,0 };
-
 int sx, sy;
 #include <vector>
 struct entity
@@ -132,83 +131,99 @@ struct entity
 	}
 };
 
-std::vector<entity> entity_map;
-int world[32][32];
-int qq = 0;
-void WorldStep()
+struct tile_idx
 {
-	int wt[32][32] = { 0 };
-	for (int sx = 0; sx < 32; sx ++)
-		for (int sy = 0; sy < 32; sy++)
+	int x;
+	int y;
+};
+
+struct tile_collection
+{
+	std::map<int, std::vector<int> > content;
+	struct iterator
+	{
+		const tile_collection& parent;
+		std::map<int, std::vector<int> >::iterator i1;
+		int i2;
+		iterator &operator++()
 		{
-			int counts[3] = { 0 };
-			int sp = 0;
-
-			for (int cx = (int)sx - 1; cx <= sx + 1; cx++)
-				for (int cy = (int)sy - 1; cy <= sy + 1; cy++)
-				{
-					int x = cx & 31;
-					int y = cy & 31;
-
-					int q = -1;
-
-					if (x == sx && y == sy)
-						sp = world[x][y];
-					else if (abs(x - sx) == 1 && y == sy)
-						q = world[x][y];
-					else if (abs(y - sy) == 1 && x == sx - (~sy & 1))
-						q = world[x][y];
-					else if (abs(y - sy) == 1 && x == sx + (sy & 1))
-						q = world[x][y];
-
-					if (q != -1)
-					{
-						int t = q & 2 ? 2 : q & 1 ? 1 : 0;
-						counts[t]++;
-					}
-				}
-
-			wt[sx][sy] = world[sx][sy];
-
-			switch (sp)
+			++i2;
+			if (i2 >= i1->second.size())
 			{
-			case 0:
-			{
-				if (counts[1] > 0)
-					wt[sx][sy] = 1;
-				if (counts[2] == 4)
-					wt[sx][sy] = 1;
+				++i1;
+				i2 = 0;
 			}
-				break;
-			case 1:
-			{
-				if (counts[1] == 6 || counts[2] == 6)
-					wt[sx][sy] = 0;
-				else
-					if (counts[1] >= 2)
-						wt[sx][sy] = 2;
-			}
-				break;
-			case 2:
-			{
-				if (counts[2] == 6)
-					wt[sx][sy] = 0;
-			}
-				break;
-			default:
-				wt[sx][sy] = 0;
-			}
+			return *this;
 		}
-	memcpy(world, wt, 32 * 32 * sizeof(int));
-}
+		tile_idx operator*()
+		{
+			return { i1->first, i1->second[i2] };
+		}
+		iterator(const tile_collection& parent) :parent(parent)
+		{
+		}
+		bool operator != (const iterator& other)
+		{
+			return i1 != other.i1 || i2 != other.i2;
+		}
+	};
+	iterator begin()
+	{
+		iterator tmp(*this);
+		tmp.i1 = content.begin();
+		tmp.i2 = 0;
+		return tmp;
+	}
+	iterator end()
+	{
+		iterator tmp(*this);
+		tmp.i1 = content.end();
+		tmp.i2 = 0;
+		return tmp;
+	}
+	void add(const tile_idx& t)
+	{
+		if (content.find(t.x) == content.end())
+		{
+			content[t.x] = std::vector<int>();
+			content[t.x].push_back(t.y);
+		}
+		else if (std::find(content[t.x].begin(), content[t.x].end(), t.y) == content[t.x].end())
+			content[t.x].push_back(t.y);
+	}
+	bool is_in(const tile_idx& t)
+	{
+		if (content.find(t.x) != content.end())
+			if (std::find(content[t.x].begin(), content[t.x].end(), t.y) != content[t.x].end())
+				return true;
+		return false;
+	}
+};
+
+std::vector<entity> entity_map;
 
 unsigned int hash(unsigned int x, unsigned int seed); // 24 bits
 unsigned int hash2(unsigned int x, unsigned int y, unsigned int seed)
 {
-//	return world[x & 31][y & 31];
-
-	seed += qq;
 	return hash(hash(x+y, seed) ^ hash(x, seed), seed<<1);
+}
+
+tile_collection GetNeighbors(int x, int y)
+{
+	tile_collection ret;
+	
+	for (int cx = x - 1; cx <= x + 1; cx++)
+		for (int cy = y - 1; cy <= y + 1; cy++)
+			if (x == cx && y == cy)
+				;
+			else if (abs(x - cx) == 1 && y == cy)
+				ret.add({ cx,cy });
+			else if (abs(y - cy) == 1 && x == cx - (~cy & 1))
+				ret.add({ cx, cy });
+			else if (abs(y - cy) == 1 && x == cx + (cy & 1))
+				ret.add({ cx, cy });
+
+	return ret;
 }
 
 gltf model(file_mapping("..\\hex.glb"));
@@ -228,7 +243,8 @@ void DrawScene(bool high_quality, int y_off = 0)
 	glLoadIdentity();
 	int seed = 42;
 	int count = 0;
-	for (int x = -9; x < 10; x++)
+	tile_collection nn = GetNeighbors(sx, sy);
+	for (int x = -4; x <= 4; x++)
 		for (int y = 0; y < 30; y++)
 		{
 			count++;
@@ -238,19 +254,16 @@ void DrawScene(bool high_quality, int y_off = 0)
 			glTranslated(m_1sqrt3 * (2*x + (y&1) - 0.5), 1.5 * y, 0);
 			glScalef(1, 1, -1);
 			unsigned char q = hash2(x+6, y_off + y+6, seed);
-			if (x == sx && y == sy)
-				glBindTexture(GL_TEXTURE_2D, hex_tex[15]);// glColor3d(1, 0, 0);
-			else if (abs(x - sx) == 1 && y == sy)
-				glBindTexture(GL_TEXTURE_2D, hex_tex[1]);//glColor3d(0, 1, 0);
-			else if (abs(y - sy) == 1 && x == sx - (~sy&1))
-				glBindTexture(GL_TEXTURE_2D, hex_tex[2]);//glColor3d(0, 0, 1);
-			else if (abs(y - sy) == 1 && x == sx + (sy & 1))
-				glBindTexture(GL_TEXTURE_2D, hex_tex[3]);//glColor3d(0, 1, 1);
-			else
-				glBindTexture(GL_TEXTURE_2D, hex_tex[4]);//glColor3d(0.3, 0.8, 0.5);
-
-
 			
+			bool is_in = nn.is_in({ x,y });
+			if (x == sx && y == sy)
+				glBindTexture(GL_TEXTURE_2D, hex_tex[15]);
+			else if (is_in)
+				glBindTexture(GL_TEXTURE_2D, hex_tex[1]);
+			else
+				glBindTexture(GL_TEXTURE_2D, hex_tex[4]);
+
+
 			model.draw(q&2?"Tree":q&1?"Plant":"Soil");
 
 			glPopMatrix();
@@ -314,16 +327,10 @@ int main(void)
 	int width = 800;
 	int height = 600;
 
-	for (int cx = 0; cx < 32; cx++)
-		for (int cy = 0; cy < 32; cy++)
-			world[cx][cy] = 0;
-
-	world[4][24] = 1;
-
 	for (int cx = 0; EnumDisplaySettings(0, cx, &dev_mode); cx++)
 	{
 
-		printf("%s %ix%i@%iHz %s // %hi\n", dev_mode.dmDeviceName, dev_mode.dmPelsWidth, dev_mode.dmPelsHeight, dev_mode.dmDisplayFrequency, fixed[dev_mode.dmDisplayFixedOutput], dev_mode.dmYResolution);
+		printf("%S %ix%i@%iHz %s // %hi\n", dev_mode.dmDeviceName, dev_mode.dmPelsWidth, dev_mode.dmPelsHeight, dev_mode.dmDisplayFrequency, fixed[dev_mode.dmDisplayFixedOutput], dev_mode.dmYResolution);
 		if (dev_mode.dmPelsWidth == width && dev_mode.dmPelsHeight == height)
 		{
 			::width = width;
@@ -390,7 +397,7 @@ int main(void)
 	glEnable(GL_LIGHTING);
 	glEnable(GL_NORMALIZE);
 	GLfloat light_pos[4] = { 1,1,1,0 };
-	GLfloat ambient[4] = { 0.3, 0.8, 0.5, 1 };
+	GLfloat ambient[4] = { 0.3f, 0.8f, 0.5f, 1 };
 	glLightfv(GL_LIGHT0, GL_AMBIENT, ambient);
 	glLightfv(GL_LIGHT0, GL_POSITION, light_pos);
 
@@ -400,12 +407,13 @@ int main(void)
 	{
 		if (Time() > next_world_step)
 		{
-//			WorldStep();
 			next_world_step += 1;
 		}
 		MSG msg;
 		while (PeekMessage(&msg, 0, 0, 0, 1))
 		{
+			if (msg.message == WM_QUIT)
+				goto hell;
 			TranslateMessage(&msg);
 			DispatchMessage(&msg);
 		}
@@ -443,7 +451,7 @@ int main(void)
 			generateViewMatrix(camy, camy+20, camx, m);
 			glMultMatrixf((GLfloat *)m);
 			double y_off;
-			glTranslated(0, modf(-Time(),&y_off)*2 * 1.5, 0);
+			glTranslated(0, modf(0,&y_off)*2 * 1.5, 0);
 			DrawScene(pass, -2 * (int)y_off);
 			GLuint s = glRenderMode(GL_RENDER);
 			if (s&&s!=-1)
@@ -488,14 +496,17 @@ int main(void)
 		if (next_frame > now)
 			Sleep(1000 * (next_frame - now));
 		if (keys[0])
-			camx -= 0.1;
+			camx -= 0.1f;
 		if (keys[1])
-			camy += 0.1;
+			camy += 0.1f;
 		if (keys[2])
-			camx += 0.1;
+			camx += 0.1f;
 		if (keys[3])
-			camy -= 0.1;
+			camy -= 0.1f;
+		camy = max(0, camy);
+		camx = max(0, camx);
 		//printf("%f %f\n", camx, camy);
 	}
+	hell:
 	return 0;
 }

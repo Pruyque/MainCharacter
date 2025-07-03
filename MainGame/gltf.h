@@ -125,10 +125,10 @@ struct gltf
 		for (json* entry : accessors.content)
 		{
 			accessor_t a;
-			a.compontent_type = entry->obj()["componentType"]->num().content;
-			a.count = entry->obj()["count"]->num().content;
+			a.compontent_type = (int)entry->obj()["componentType"]->num().content;
+			a.count = (int)entry->obj()["count"]->num().content;
 			a.type = entry->obj()["type"]->str().content;
-			a.view = entry->obj()["bufferView"]->num().content;
+			a.view = (int)entry->obj()["bufferView"]->num().content;
 			this->accessors.push_back(a);
 		}
 		for (json* entry : views.content)
@@ -146,9 +146,9 @@ struct gltf
 			json_array& prim = entry->obj()["primitives"]->arr();
 			for (json* p : prim.content)
 			{
-				int position = p->obj()["attributes"]->obj()["POSITION"]->num().content;
-				int normal = p->obj()["attributes"]->obj()["NORMAL"]->num().content;
-				int indices = p->obj()["indices"]->num().content;
+				int position = (int)p->obj()["attributes"]->obj()["POSITION"]->num().content;
+				int normal = (int)p->obj()["attributes"]->obj()["NORMAL"]->num().content;
+				int indices = (int)p->obj()["indices"]->num().content;
 				int mode = 4;
 
 				if (p->obj().content.find("mode") != p->obj().content.end())
