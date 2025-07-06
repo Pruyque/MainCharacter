@@ -56,6 +56,7 @@ struct file_mapping
 };
 int width, height;
 bool keys[4] = { 0 };
+bool click = false;
 LRESULT wndProc(HWND wnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
 	switch (msg)
@@ -78,6 +79,11 @@ LRESULT wndProc(HWND wnd, UINT msg, WPARAM wParam, LPARAM lParam)
 
 		mx = min(mx, width);
 		my = min(my, height);
+	}
+	break;
+	case WM_LBUTTONDOWN:
+	{
+		click = true;
 	}
 	break;
 	case WM_KEYDOWN:
@@ -116,9 +122,10 @@ double Time()
 	return (double)time / (double)freq.freq;
 }
 
-const double m_1sqrt3 = sqrt(3.)/2.;
+const double m_1sqrt3 = sqrt(3.) / 2.;
 
 int sx, sy;
+int tx = 0, ty = 0;
 #include <vector>
 struct entity
 {
@@ -145,7 +152,7 @@ struct tile_collection
 		const tile_collection& parent;
 		std::map<int, std::vector<int> >::iterator i1;
 		int i2;
-		iterator &operator++()
+		iterator& operator++()
 		{
 			++i2;
 			if (i2 >= i1->second.size())
@@ -205,13 +212,13 @@ std::vector<entity> entity_map;
 unsigned int hash(unsigned int x, unsigned int seed); // 24 bits
 unsigned int hash2(unsigned int x, unsigned int y, unsigned int seed)
 {
-	return hash(hash(x+y, seed) ^ hash(x, seed), seed<<1);
+	return hash(hash(x + y, seed) ^ hash(x, seed), seed << 1);
 }
 
 tile_collection GetNeighbors(int x, int y)
 {
 	tile_collection ret;
-	
+
 	for (int cx = x - 1; cx <= x + 1; cx++)
 		for (int cy = y - 1; cy <= y + 1; cy++)
 			if (x == cx && y == cy)
@@ -224,6 +231,83 @@ tile_collection GetNeighbors(int x, int y)
 				ret.add({ cx, cy });
 
 	return ret;
+}
+#include <queue>
+tile_collection GetPath(int x0, int y0, int x1, int y1)
+{
+	struct entry
+	{
+		int x;
+		int y;
+		int d;
+		int h;
+		int px, py;
+		bool operator<(const entry& other) const
+		{
+			return d+h > other.d+other.h;
+		}
+	};
+	if (x0 == x1 && y0 == y1)
+	{
+		tile_collection tmp;
+		tmp.add({ x0,y0 });
+		return tmp;
+	}
+	
+	std::priority_queue<entry> frontier;
+	std::vector<entry> body;
+	frontier.push({ x0,y0,0,0,x0,y0 });
+	body.push_back({ x0,y0,0,0,x0,y0 });
+
+	while (!frontier.empty())
+	{
+		const entry c = frontier.top();
+		frontier.pop();
+		tile_collection nn = GetNeighbors(c.x, c.y);
+		for (const tile_idx& t : nn)
+		{
+			int stepcost = hash2(t.x + 6, t.y + 6, 42);
+			stepcost = stepcost & 2 ? 2 : stepcost & 1 ? 10 : 1;
+			if (t.x == x1 && t.y == y1)
+			{
+				body.push_back({ x1,y1,c.d + stepcost,c.x, c.y });
+				tile_collection tmp;
+				entry d = c;
+				tmp.add({ d.x, d.y });
+				int x = d.x, y = d.y;
+				do
+				{
+					for (int cx = 0;cx < body.size(); cx ++)
+						if (body[cx].x == d.px && body[cx].y == d.py)
+						{
+							d = body[cx];
+							tmp.add({ d.x, d.y });
+							break;
+						}
+				} while (d.x != d.px || d.y != d.py);
+				return tmp;
+			}
+			for (int cx = 0; cx < body.size(); cx ++)
+				if (body[cx].x == t.x && body[cx].y == t.y)
+				{
+					if (body[cx].d > c.d + stepcost)
+					{
+						body[cx].d = c.d + stepcost;
+						body[cx].px = c.x;
+						body[cx].py = c.y;
+						frontier.push(body[cx]);
+					}
+					goto iter;
+				}
+
+			body.push_back({ t.x, t.y, c.d + stepcost,0,c.x,c.y });
+			frontier.push({ t.x, t.y, c.d+stepcost,abs(t.x - x1) + abs(t.y - y1),c.x,c.y });
+		iter:;
+		}
+	}
+
+	done:
+	return tile_collection();
 }
 
 gltf model(file_mapping("..\\hex.glb"));
@@ -244,6 +328,7 @@ void DrawScene(bool high_quality, int y_off = 0)
 	int seed = 42;
 	int count = 0;
 	tile_collection nn = GetNeighbors(sx, sy);
+	tile_collection path = GetPath(sx, sy, tx, ty);
 	for (int x = -4; x <= 4; x++)
 		for (int y = 0; y < 30; y++)
 		{
@@ -251,20 +336,24 @@ void DrawScene(bool high_quality, int y_off = 0)
 			glPushName(entity_map.size());
 			entity_map.push_back(entity((x << 16) | y));
 			glPushMatrix();
-			glTranslated(m_1sqrt3 * (2*x + (y&1) - 0.5), 1.5 * y, 0);
+			glTranslated(m_1sqrt3 * (2 * x + (y & 1) - 0.5), 1.5 * y, 0);
 			glScalef(1, 1, -1);
-			unsigned char q = hash2(x+6, y_off + y+6, seed);
-			
+			unsigned char q = hash2(x + 6, y_off + y + 6, seed);
+
 			bool is_in = nn.is_in({ x,y });
 			if (x == sx && y == sy)
 				glBindTexture(GL_TEXTURE_2D, hex_tex[15]);
+			else if (path.is_in({ x, y }))
+				glBindTexture(GL_TEXTURE_2D, hex_tex[6]);
 			else if (is_in)
 				glBindTexture(GL_TEXTURE_2D, hex_tex[1]);
+			else if (tx == x && ty == y)
+				glBindTexture(GL_TEXTURE_2D, hex_tex[3]);
 			else
 				glBindTexture(GL_TEXTURE_2D, hex_tex[4]);
 
 
-			model.draw(q&2?"Tree":q&1?"Plant":"Soil");
+			model.draw(q & 2 ? "Tree" : q & 1 ? "Plant" : "Soil");
 
 			glPopMatrix();
 			glPopName();
@@ -275,7 +364,7 @@ void DrawScene(bool high_quality, int y_off = 0)
 unsigned int hash(unsigned int x, unsigned int seed) // 24 bits
 {
 	const unsigned int fi = 2654435769; // 1/fi * 2^23
-	return (((x * fi * (x^seed)))>>8);
+	return (((x * fi * (x ^ seed))) >> 8);
 }
 
 extern "C" {
@@ -295,15 +384,15 @@ void generateViewMatrix(float x1, float x2, float h, float m[4][4])
 	float c = sqrtf(a * a / det);
 	float s = -sqrtf(b * b / det);
 	memset(m, 0, 4 * 4 * sizeof(float));
-	
+
 	m[0][0] = 1;
-	
+
 	m[2][1] = c;
 	m[2][3] = s;
-	
+
 	m[1][1] = -s;
 	m[1][3] = c;
-	
+
 	m[3][0] = 0;
 	m[3][1] = -c * h;
 	m[3][3] = -s * h;
@@ -319,11 +408,11 @@ void generateViewMatrix(float x1, float x2, float h, float m[4][4])
 int main(void)
 {
 	DEVMODE dev_mode;
-	const char *fixed[3];
+	const char* fixed[3];
 	fixed[DMDFO_DEFAULT] = "default";
 	fixed[DMDFO_CENTER] = "center";
 	fixed[DMDFO_STRETCH] = "stretch";
-	
+
 	int width = 800;
 	int height = 600;
 
@@ -335,7 +424,7 @@ int main(void)
 		{
 			::width = width;
 			::height = height;
-//			ChangeDisplaySettings(&dev_mode, CDS_FULLSCREEN);
+			//			ChangeDisplaySettings(&dev_mode, CDS_FULLSCREEN);
 			break;
 		}
 	}
@@ -344,11 +433,11 @@ int main(void)
 	wc.lpszClassName = L"MainCharacter";
 	wc.hCursor = 0;
 	RegisterClass(&wc);
-	
+
 	HWND wnd = CreateWindow(wc.lpszClassName, L"MainCharacter", 0, 0, 0, dev_mode.dmPelsWidth, dev_mode.dmPelsHeight, 0, 0, 0, 0);
 	SetWindowLong(wnd, GWL_STYLE, 0);
-	SetWindowPos(wnd, 0, 0, 0, 0, 0, SWP_FRAMECHANGED|SWP_NOMOVE|SWP_NOZORDER|SWP_NOSIZE|SWP_SHOWWINDOW);
-	
+	SetWindowPos(wnd, 0, 0, 0, 0, 0, SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOZORDER | SWP_NOSIZE | SWP_SHOWWINDOW);
+
 
 	HDC dc = GetDC(wnd);
 	PIXELFORMATDESCRIPTOR pfd;
@@ -379,18 +468,18 @@ int main(void)
 	for (int cx = 0; cx < 16; cx++)
 	{
 		glBindTexture(GL_TEXTURE_2D, hex_tex[cx]);
-		hex = cx & 1 ? 0xFF:0;
+		hex = cx & 1 ? 0xFF : 0;
 		hex |= cx & 2 ? 0xFF00 : 0;
 		hex |= cx & 4 ? 0xFF00FF : 0;
 		hex |= cx & 8 ? 0x808080 : 0;
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB,1,1, 0, GL_RGBA, GL_UNSIGNED_BYTE, &hex);
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, &hex);
 	}
 	float y = 0;
 	double next_frame = Time() + 0.03;
-	
+
 	glDepthFunc(GL_GREATER);
 	glClearDepth(0);
 	glEnable(GL_LIGHT0);
@@ -418,10 +507,10 @@ int main(void)
 			DispatchMessage(&msg);
 		}
 		double now = Time();
-//		printf("%f\n", 1. / (now - last_time));
+		//		printf("%f\n", 1. / (now - last_time));
 		glEnable(GL_TEXTURE_2D);
-		glClearColor(0,0,0, 1);
-		glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
+		glClearColor(0, 0, 0, 1);
+		glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 		GLuint selectBuffer[1024];
 		glSelectBuffer(1024, selectBuffer);
 		glRenderMode(GL_SELECT);
@@ -429,6 +518,7 @@ int main(void)
 
 		entity_map.clear();
 		glEnable(GL_DEPTH_TEST);
+
 
 		for (int pass = 0; pass < 2; pass++)
 		{
@@ -439,22 +529,22 @@ int main(void)
 			{ // Select projection for one pixel
 				glViewport(0, 0, 1, 1);
 				glScaled(width / 2., height / 2., 1);
-				glTranslated(-(2.*mx - width) / width, -(height - 2.*my) / height, 0);
+				glTranslated(-(2. * mx - width) / width, -(height - 2. * my) / height, 0);
 			}
 			else
 			{
 				glViewport(0, 0, width, height);
 			}
 
-// Setup projection
+			// Setup projection
 			float m[4][4];
-			generateViewMatrix(camy, camy+20, camx, m);
-			glMultMatrixf((GLfloat *)m);
+			generateViewMatrix(camy, camy + 20, camx, m);
+			glMultMatrixf((GLfloat*)m);
 			double y_off;
-			glTranslated(0, modf(0,&y_off)*2 * 1.5, 0);
+			glTranslated(0, modf(0, &y_off) * 2 * 1.5, 0);
 			DrawScene(pass, -2 * (int)y_off);
 			GLuint s = glRenderMode(GL_RENDER);
-			if (s&&s!=-1)
+			if (s && s != -1)
 			{
 				int ptr = 0;
 				int zmin = 0xFFFFFFFF;
@@ -472,8 +562,15 @@ int main(void)
 					}
 					ptr += count;
 				}
-			//	printf("%i: %i %i\n", s, sx, sy);
+				//	printf("%i: %i %i\n", s, sx, sy);
 			}
+		}
+
+		if (click)
+		{
+			tx = sx;
+			ty = sy;
+			click = false;
 		}
 
 		glDisable(GL_LIGHTING);
@@ -507,6 +604,6 @@ int main(void)
 		camx = max(0, camx);
 		//printf("%f %f\n", camx, camy);
 	}
-	hell:
+hell:
 	return 0;
 }
